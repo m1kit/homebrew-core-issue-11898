@@ -1,95 +1,152 @@
 $homebrew = `brew --repository`.strip
 $homebrew_core = "#{$homebrew}/Library/Taps/homebrew/homebrew-core"
 $homebrew_formula = "#{$homebrew_core}/Formula/*.rb"
-# These ignore invalid option and request user response like sudo
-$blacklist = [
-    'cssembed',
-    'aldo',
-    'jvmtop',
-    'rlvm',
-    'gearsystem',
-    'cntlm',
-    'ppsspp',
-    'chocolate-doom',
-    'latex2rtf',
-    'lci',
-    'ii',
-    'redstore',
-    'einstein',
-    'virtualhost.sh',
-    'ballerburg',
-    'xspin',
-    'qcachegrind',
-    'nuvie',
-    'gearboy',
-    'peg',
-    'term',
-    'lv',
-    'pngnq',
-    'memcache-top',
-    'mcpp',
-    'cmigemo',
-    'openjazz',
-    'pianobar',
+$targets = [
+    'griffon',
+    'wwwoffle',
+    'foremost',
+    'rdiff-backup',
+    'cgdb',
+    'fatsort',
+    'lockrun',
+    'icecast',
+    'sloccount',
+    'bokken',
+    'mp3gain',
+    'cdargs',
+    'plenv',
+    'qstat',
+    'epsilon',
+    'iat',
+    'mussh',
+    'beanstalkd',
+    'wiggle',
+    'redsocks',
+    'git-open',
+    'xmlstarlet',
+    'git-number',
+    'ripmime',
+    'streamripper',
+    'xmlformat',
+    'dnstop',
+    'mairix',
+    'pbrt',
+    'naturaldocs',
+    'xmlcatmgr',
+    'dcfldd',
+    'ocp',
+    'aview',
+    'webkit2png',
+    'madplay',
+    'winexe',
+    'tnef',
+    'mkvdts2ac3',
+    'echoprint-codegen',
+    'pbzip2',
+    'tcpsplit',
+    'tcpflow',
+    'xmp',
+    'star',
+    'pktanon',
+    'cdpr',
+    'lcov',
+    'dvdbackup',
+    'xcproj',
+    'ifstat',
+    'kytea',
+    'dcled',
+    'pdfcrack',
+    'iphotoexport',
+    'mogenerator',
+    'launch4j',
+    'httperf',
+    'rsnapshot',
+    'arm',
+    'thrift',
+    'pdftohtml',
+    'gtmess',
+    'wakeonlan',
+    'makepp',
+    'bogofilter',
+    'gcab',
+    'nload',
+    'htmldoc',
+    'redo',
+    'arss',
+    'shocco',
+    'keychain',
+    'snownews',
+    'cdparanoia',
+    'blahtexml',
+    'doubledown',
+    'proxytunnel',
+    'esniper',
+    'davmail',
+    'doublecpp',
+    'swfmill',
+    'vorbisgain',
+    'rlwrap',
+    'wy60',
+    'bbe',
+    'tidyp',
+    'wry',
+    'nkf',
+    'mpg321',
+    'gpp',
+    'bsdsfv',
+    'gpsim',
+    'id3v2',
+    'sntop',
+    'mpgtx',
+    'movgrab',
+    'yydecode',
+    'crunch',
 ]
 
-def check_formula(path)
+def execute_formula(path)
   name = File.basename path, '.rb'
-  return if $blacklist.include?(name)
-  File.open(path) do |file|
-    file.each_line do |line|
-      if line.include? 'test do'
-        #puts "[#{name}] OK"
-        return
-      end
-    end
-    execute_version_command(name, path)
-  end
-end
+  return unless $targets.include?(name)
+  system "brew install #{name}"
 
-def execute_version_command(name, path)
-  unless system("brew install #{name}&>/dev/null")
-    puts "[#{name}] \e[31mINSTALLATION FAILED\e[0m"
+  %w[--version --help].each do |flag|
+    next unless system("#{name} #{flag}")
+    update_formula(name, path, flag)
+    test_formula(name, path)
     return
   end
-  puts "[#{name}] executing"
-  ["#{name} --version", "#{name} -v", "#{name} --help"].each do |command|
-    if system("#{command}&>/dev/null")
-      append_test(name, path, command)
-      return
-    end
-  end
-  puts "[#{name}] \e[31mCOMMAND NOT FOUND\e[0m"
+  puts "#{name} command not found"
 end
 
-def append_test(name, path, command)
-  formula = File.read(path).gsub(/^end/, <<~RUBY)
+def update_formula(name, path, flag)
+  formula = File.read(path).gsub(/^end/, <<~RUBY.chomp)
   
       test do
-        system('#{command}')
+        system "\#{bin}/#{name}", "#{flag}"
       end
     end
-  RUBY
+RUBY
   File.open(path, 'w') do |file|
     file.puts formula
   end
-  test_formula(name, path)
 end
 
 def test_formula(name, path)
   Dir.chdir($homebrew_core) do
-    unless system("brew test #{name}")
+    system "brew uninstall --force #{name}"
+    system "brew install --build-from-source #{name}"
+    system "brew test #{name}"
+    if system("brew audit --strict #{name}")
+      puts "commiting #{name}"
+      system "git add #{path}"
+      system "git commit -m '#{name}: add test'"
+      puts "\e[32mSUCCESSFUL\e[0m"
+    else
       system 'git reset --hard HEAD'
-      puts "[#{name}] \e[31mTEST FAILED\e[0m"
-      return
     end
-    `git add #{path}`
-    `git commit -m "#{name}: add test"`
-    puts "[#{name}] ADDED TEST"
+    system "brew uninstall --force #{name}"
   end
 end
 
-puts "Start checking formulae in '#{$homebrew_formula}'"
 Dir.glob($homebrew_formula) do |path|
-  check_formula(path)
+  execute_formula(path)
 end
